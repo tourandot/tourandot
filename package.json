@@ -1,0 +1,17 @@
+{
+  "name": "tourandot",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Walking tour platform",
+  "scripts": {
+    "api": "pnpm --filter api dev",
+    "mobile": "pnpm --filter mobile start",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
