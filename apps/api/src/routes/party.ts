@@ -8,6 +8,8 @@ interface Party {
   config: {
     narrationStyle: "verbose" | "quick" | "balanced";
   };
+  joinMode: "open" | "pin";
+  pin?: string;
   members: Map<
     string,
     {
@@ -30,6 +32,21 @@ function generateCode(): string {
 }
 
 export async function partyRoutes(app: FastifyInstance) {
+  // GET /party/ongoing - List active parties (for nearby discovery)
+  app.get("/ongoing", async () => {
+    const activeParties = Array.from(parties.values())
+      .filter((p) => p.status === "active")
+      .map((p) => ({
+        code: p.code,
+        tourId: p.tourId,
+        joinMode: p.joinMode,
+        memberCount: p.members.size,
+        createdAt: p.createdAt,
+      }));
+
+    return { parties: activeParties };
+  });
+
   // POST /party - Create a new party
   app.post<{
     Body: {
@@ -37,9 +54,11 @@ export async function partyRoutes(app: FastifyInstance) {
       hostId: string;
       hostName: string;
       config: Party["config"];
+      joinMode: "open" | "pin";
+      pin?: string;
     };
   }>("/", async (request) => {
-    const { tourId, hostId, hostName, config } = request.body;
+    const { tourId, hostId, hostName, config, joinMode, pin } = request.body;
 
     const code = generateCode();
     const party: Party = {
@@ -47,10 +66,12 @@ export async function partyRoutes(app: FastifyInstance) {
       tourId,
       hostId,
       config,
+      joinMode,
+      pin,
       members: new Map([
-        [hostId, { id: hostId, name: hostName, ready: false }],
+        [hostId, { id: hostId, name: hostName, ready: true }],
       ]),
-      status: "lobby",
+      status: "active", // Start immediately, no lobby
       currentStop: 0,
       createdAt: new Date(),
     };
@@ -86,10 +107,10 @@ export async function partyRoutes(app: FastifyInstance) {
   // POST /party/:code/join - Join a party
   app.post<{
     Params: { code: string };
-    Body: { userId: string; name: string };
+    Body: { userId: string; name: string; pin?: string };
   }>("/:code/join", async (request, reply) => {
     const { code } = request.params;
-    const { userId, name } = request.body;
+    const { userId, name, pin } = request.body;
 
     const party = parties.get(code.toUpperCase());
 
@@ -97,11 +118,16 @@ export async function partyRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Party not found" });
     }
 
-    if (party.status !== "lobby") {
-      return reply.status(400).send({ error: "Party already started" });
+    if (party.status === "completed") {
+      return reply.status(400).send({ error: "Tour has ended" });
     }
 
-    party.members.set(userId, { id: userId, name, ready: false });
+    // Check PIN if required
+    if (party.joinMode === "pin" && party.pin !== pin) {
+      return reply.status(401).send({ error: "Invalid PIN" });
+    }
+
+    party.members.set(userId, { id: userId, name, ready: true });
 
     return {
       party: {
@@ -109,6 +135,18 @@ export async function partyRoutes(app: FastifyInstance) {
         members: Array.from(party.members.values()),
       },
     };
+  });
+
+  // DELETE /party/:code - End/delete a party
+  app.delete<{ Params: { code: string } }>("/:code", async (request, reply) => {
+    const { code } = request.params;
+    const deleted = parties.delete(code.toUpperCase());
+
+    if (!deleted) {
+      return reply.status(404).send({ error: "Party not found" });
+    }
+
+    return { success: true };
   });
 
   // POST /party/:code/ready - Mark self as ready

@@ -4,6 +4,7 @@
   "private": true,
   "description": "Walking tour platform",
   "scripts": {
+    "dev": "turbo run dev",
     "api": "pnpm --filter api dev",
     "mobile": "pnpm --filter mobile start",
     "build": "turbo run build",

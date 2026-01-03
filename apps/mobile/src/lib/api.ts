@@ -1,4 +1,4 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://10.0.0.78:3000";
 
 interface Tour {
   id: string;
@@ -40,16 +40,21 @@ interface Party {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: HeadersInit = { ...options?.headers };
+
+  // Only set Content-Type for requests with a body
+  if (options?.body) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+    const errorBody = await response.text().catch(() => "");
+    throw new Error(`API error: ${response.status} - ${errorBody}`);
   }
 
   return response.json();
@@ -65,6 +70,8 @@ export const api = {
     hostId: string;
     hostName: string;
     config: { narrationStyle: "verbose" | "quick" | "balanced" };
+    joinMode: "open" | "pin";
+    pin?: string;
   }) =>
     request<{ code: string; party: Party }>("/party", {
       method: "POST",
@@ -83,5 +90,27 @@ export const api = {
     request<{ ready: boolean; allReady: boolean }>(`/party/${code}/ready`, {
       method: "POST",
       body: JSON.stringify({ userId }),
+    }),
+
+  getOngoingParties: () =>
+    request<{
+      parties: Array<{
+        code: string;
+        tourId: string;
+        joinMode: "open" | "pin";
+        memberCount: number;
+        createdAt: string;
+      }>;
+    }>("/party/ongoing"),
+
+  joinPartyWithPin: (code: string, userId: string, name: string, pin?: string) =>
+    request<{ party: Party }>(`/party/${code}/join`, {
+      method: "POST",
+      body: JSON.stringify({ userId, name, pin }),
+    }),
+
+  endParty: (code: string) =>
+    request<{ success: boolean }>(`/party/${code}`, {
+      method: "DELETE",
     }),
 };
